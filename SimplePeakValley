@@ -1,0 +1,78 @@
+import alpaca_trade_api as tradeapi
+import websocket
+import json
+import time
+
+# account keys
+# key = 'PKKISGBT814WSEQWZ2AM'
+# sec = '/4r0nC5Y7D9r7I1VcNI5c/zua0FoSZS3D/A6VRyJ'
+key = 'PK4FOTVSTYRIMNOCG1NU'
+sec = 'hF0IBrBt2PUq8kQ1PlznvvcUCIOFQGTgiNH1fLtV'
+
+# streams to subscribe to
+tickers = ['T.UONE']
+
+# API endpoint URL
+base_url = 'https://paper-api.alpaca.markets'
+
+# ensure api version is correct
+api = tradeapi.REST(key, sec, base_url, api_version='v2')
+
+# empty array that is filled with prices during on_message method
+array = []
+peak_valley_array = [0, 10000]
+
+# init an account variable
+account = api.get_account()
+
+
+# runs authentication for polygon and tunes into streams
+def on_open(ws):
+    auth_data = {
+        "action": "authenticate",
+        "data": {
+            "key_id": key,
+            "secret_key": sec
+        }
+    }
+
+    ws.send(json.dumps(auth_data))
+
+    listen_message = {"action": "listen",
+                      "data": {
+                          "streams": tickers
+                      }
+                      }
+
+    ws.send(json.dumps(listen_message))
+
+
+# runs every time a message is received from polygon
+def on_message(ws, message):
+    # Trade channel parsing
+    if '\"x\"' in message:
+        pindex = message.index('\"p\":') + 4
+        sindex = message.index('\"s\":') - 1
+        price = float(message[pindex:sindex])
+        array.append(price)
+        if price < peak_valley_array[1]:
+            peak_valley_array[1] = price
+            array.clear()
+        if price > peak_valley_array[0]:
+            peak_valley_array[0] = price
+            array.clear()
+    print('Peak:   ' + str(peak_valley_array[0]))
+    print('Valley: ' + str(peak_valley_array[1]))
+    print(array)
+
+
+# no fricking clue when this runs
+def on_close(ws):
+    print("closed connection")
+
+# socket url to access data streams
+socket = "wss://data.alpaca.markets/stream"
+
+# create websocket app and run indefinitely
+ws = websocket.WebSocketApp(socket, on_open=on_open, on_message=on_message, on_close=on_close)
+ws.run_forever()
