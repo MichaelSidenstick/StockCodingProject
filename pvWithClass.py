@@ -20,14 +20,14 @@ api = tradeapi.REST(key, sec, base_url, api_version='v2')
 account = api.get_account()
 
 # create stocks to subscribe to
-idex = stock_class.Stock('IDEX')
-stocks = [idex]
+htz = stock_class.Stock('HTZ')
+stocks = [htz]
 
 # get opening prices for all stocks
 for stock in stocks:
     url = "https://finance.yahoo.com/quote/" + stock.ticker + "?p=" + stock.ticker
     # Path to Chrome Driver
-    DRIVER_PATH = r'H:\PyCharm\ChromeWebDriver\chromedriver'
+    DRIVER_PATH = r'H:\PyCharm\ChromeWebDriver\chromedriver.exe'
     # Open browser/server connection
     options = Options()
     options.headless = True
@@ -40,6 +40,8 @@ for stock in stocks:
     stock.opening_price = float(h1.text)
     stock.peak = stock.opening_price
     stock.valley = stock.opening_price
+    stock.change = (stock.opening_price / 100.0).__format__('.4f')
+    print(stock.ticker + ' OPENING PRICE: ' + str(stock.opening_price))
     driver.quit()
 
 # get streams to tune into
@@ -95,12 +97,20 @@ def on_message(ws, message):
             stock.can_set_valley = True
             stock.can_set_peak = False
 
+        print(stock.current_price)
+        print(stock.can_set_peak)
+        print(stock.can_set_valley)
+
         # set valley and buy
         if stock.previous_price < stock.current_price and stock.can_set_valley:
             stock.valley = stock.previous_price
+            print('VALLEY SET: ' + str(stock.valley) + '\nCurrent peak: ' + str(stock.peak))
             # buy if there is a significant turn
             if stock.current_price / stock.valley >= 1.005:
-                stock.shares_bought = int(((float(account.equity)) * 0.01) / stock.current_price)
+                stock.shares_bought = stock.shares_bought + int(((float(account.equity)) * 0.01) / stock.current_price)
+                stock.shares_owned = stock.shares_owned + stock.shares_bought
+                print('\nBuy ' + str(stock.shares_bought) + ' stocks for ' + str(stock.current_price) + '\n')
+                '''
                 api.submit_order(
                     symbol=[stock.ticker],
                     qty=stock.shares_bought,
@@ -109,13 +119,16 @@ def on_message(ws, message):
                     time_in_force='gtc'
                 )
                 stock.bought_price = stock.current_price
-                print('buy')
+            '''
 
         # set peak and sell
         if stock.previous_price > stock.current_price and stock.can_set_peak:
             stock.peak = stock.previous_price
+            print('PEAK SET: ' + str(stock.peak) + '\nCurrent valley: ' + str(stock.valley))
             # sell if there is a significant turn
-            if stock.peak / stock.current_price >= 1.005:
+            if stock.shares_bought != 0 and stock.peak / stock.current_price >= 1.005:
+                print('\nSell ' + str(stock.shares_owned) + ' stocks for ' + str(stock.current_price) + '\n')
+            '''
                 api.submit_order(
                     symbol=[stock.ticker],
                     qty=stock.shares_bought,
@@ -123,7 +136,7 @@ def on_message(ws, message):
                     type='market',
                     time_in_force='gtc'
                 )
-                print('sell')
+            '''
 
 
 def on_close(ws):
