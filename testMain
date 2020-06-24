@@ -1,0 +1,125 @@
+import alpaca_trade_api as tradeapi
+import websocket
+import json
+import time
+import stock_class
+
+# account keys
+key = 'PKKISGBT814WSEQWZ2AM'
+sec = '/4r0nC5Y7D9r7I1VcNI5c/zua0FoSZS3D/A6VRyJ'
+# key = 'PK4FOTVSTYRIMNOCG1NU'
+# sec = 'hF0IBrBt2PUq8kQ1PlznvvcUCIOFQGTgiNH1fLtV'
+
+# create stock objects to subscribe to
+idex = stock_class.Stock('IDEX')
+aapl = stock_class.Stock('AAPL')
+stocks = [idex, aapl]
+
+
+def get_tickers(list_stocks):
+    tickers = []
+    for stock in list_stocks:
+        tickers.append('T.' + stock.ticker)
+        tickers.append('AM.' + stock.ticker)
+    return tickers
+
+
+# streams to subscribe to
+tickers = get_tickers(stocks)
+
+# API endpoint URL
+base_url = 'https://paper-api.alpaca.markets'
+
+# ensure api version is correct
+api = tradeapi.REST(key, sec, base_url, api_version='v2')
+
+# empty array that is filled with prices during on_message method
+array = []
+peak_valley_array = [0, 10000]
+
+# init an account variable
+account = api.get_account()
+
+
+def unix_to_sec(unix):
+    mod = -1;
+    time = '' + unix
+    sec_in_day = 86400
+    done = False
+    while(len(time)>=5 and not done):
+        num = int(time[:5])
+        place = 5
+        if (num < sec_in_day and len(time) >= 6):
+            num = int(time[:6])
+            place = 6
+        mod = num % sec_in_day
+        time_rem = time[place:]
+        time = str(mod) + time_rem
+        if (len(time) == 5 and mod < sec_in_day):
+            done = True
+    return mod
+
+
+# runs authentication for polygon and tunes into streams
+def on_open(ws):
+    auth_data = {
+        "action": "authenticate",
+        "data": {
+            "key_id": key,
+            "secret_key": sec
+        }
+    }
+
+    ws.send(json.dumps(auth_data))
+
+    listen_message = {"action": "listen",
+                      "data": {
+                          "streams": tickers
+                      }
+                      }
+
+    ws.send(json.dumps(listen_message))
+
+
+def get_stock(message, stocks=stocks):
+    data_index = message.index('\"data\"') - 2
+    stream_index = message.index('.') + 1
+    tick = message[stream_index:data_index]
+    for thing in stocks:
+        if thing.ticker == tick:
+            return thing
+
+
+# runs every time a message is received from polygon
+def on_message(ws, message):
+    print(message)
+    # Trade channel parsing
+    if '\"x\"' in message:
+        pindex = message.index('\"p\":') + 4
+        sindex = message.index('\"s\":') - 1
+        tindex = message.index('\"t\":') + 4
+
+        stock = get_stock(message)
+        print(stock.ticker)
+
+        price = float(message[pindex:sindex])
+        unix = message[tindex:(tindex+10)]
+        array.append(price)
+        if price < peak_valley_array[1]:
+            peak_valley_array[1] = price
+            array.clear()
+        if price > peak_valley_array[0]:
+            peak_valley_array[0] = price
+            array.clear()
+
+
+# no fricking clue when this runs
+def on_close(ws):
+    print("closed connection")
+
+# socket url to access data streams
+socket = "wss://data.alpaca.markets/stream"
+
+# create websocket app and run indefinitely
+ws = websocket.WebSocketApp(socket, on_open=on_open, on_message=on_message, on_close=on_close)
+ws.run_forever()
