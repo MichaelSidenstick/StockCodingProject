@@ -4,9 +4,8 @@ class Stock:
         self.opening_price = 0.0
         self.current_price = 0.0
         self.previous_price = 0.0
+        self.two_prices_ago = 0.0
         self.time = 0.0
-        self.can_set_peak = False
-        self.can_set_valley = False
         self.shares_bought = 0.0
         self.shares_owned = shares_owned
         self.bought_price = 0.0
