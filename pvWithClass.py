@@ -20,8 +20,8 @@ api = tradeapi.REST(key, sec, base_url, api_version='v2')
 account = api.get_account()
 
 # create stocks to subscribe to
-htz = stock_class.Stock('HTZ')
-stocks = [htz]
+ekso = stock_class.Stock('EKSO')
+stocks = [ekso]
 
 # get opening prices for all stocks
 for stock in stocks:
@@ -40,7 +40,7 @@ for stock in stocks:
     stock.opening_price = float(h1.text)
     stock.peak = stock.opening_price
     stock.valley = stock.opening_price
-    stock.change = (stock.opening_price / 100.0).__format__('.4f')
+    stock.change = float((stock.opening_price / 100.0).__format__('.4f'))
     print(stock.ticker + ' OPENING PRICE: ' + str(stock.opening_price))
     driver.quit()
 
@@ -79,30 +79,35 @@ def on_open(ws):
 
 
 def on_message(ws, message):
+    print(message)
     stock = get_stock(message)
     if '\"x\"' in message:
         # Get indexes and values of all needed variables for stream T
         price_index = message.index('\"p\"')
         s_index = message.index('\"s\"')
+        stock.two_prices_ago = stock.previous_price
         stock.previous_price = stock.current_price
         stock.current_price = float(message[(price_index + 4):(s_index - 1)])
 
         # if the current price is 1% from valley, can set peak and not valley
-        if stock.current_price > (stock.valley + stock.change):
-            stock.can_set_peak = True
-            stock.can_set_valley = False
+        if (stock.valley + stock.change) < stock.current_price < stock.previous_price >= stock.two_prices_ago:
+            stock.peak = stock.previous_price
+            print('PEAK SET: ' + str(stock.peak) + '\nCurrent valley: ' + str(stock.valley))
+            # sell if there is a significant turn
+            if stock.shares_bought != 0 and stock.peak / stock.current_price >= 1.005:
+                print('\nSell ' + str(stock.shares_owned) + ' stocks for ' + str(stock.current_price) + '\n')
+                '''
+                api.submit_order(
+                    symbol=[stock.ticker],
+                    qty=stock.shares_bought,
+                    side='sell',
+                    type='market',
+                    time_in_force='gtc'
+                )
+                '''
 
         # if the current price is 1% from peak, can set valley and not peak
-        if stock.current_price < (stock.peak - stock.change):
-            stock.can_set_valley = True
-            stock.can_set_peak = False
-
-        print(stock.current_price)
-        print(stock.can_set_peak)
-        print(stock.can_set_valley)
-
-        # set valley and buy
-        if stock.previous_price < stock.current_price and stock.can_set_valley:
+        if (stock.peak - stock.change) > stock.current_price > stock.previous_price <= stock.two_prices_ago:
             stock.valley = stock.previous_price
             print('VALLEY SET: ' + str(stock.valley) + '\nCurrent peak: ' + str(stock.peak))
             # buy if there is a significant turn
@@ -118,25 +123,8 @@ def on_message(ws, message):
                     type='market',
                     time_in_force='gtc'
                 )
+                '''
                 stock.bought_price = stock.current_price
-            '''
-
-        # set peak and sell
-        if stock.previous_price > stock.current_price and stock.can_set_peak:
-            stock.peak = stock.previous_price
-            print('PEAK SET: ' + str(stock.peak) + '\nCurrent valley: ' + str(stock.valley))
-            # sell if there is a significant turn
-            if stock.shares_bought != 0 and stock.peak / stock.current_price >= 1.005:
-                print('\nSell ' + str(stock.shares_owned) + ' stocks for ' + str(stock.current_price) + '\n')
-            '''
-                api.submit_order(
-                    symbol=[stock.ticker],
-                    qty=stock.shares_bought,
-                    side='sell',
-                    type='market',
-                    time_in_force='gtc'
-                )
-            '''
 
 
 def on_close(ws):
