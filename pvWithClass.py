@@ -92,13 +92,16 @@ def on_message(ws, message):
         # if the current price is 1% from valley, can set peak and not valley
         if (stock.valley + stock.change) < stock.current_price < stock.previous_price >= stock.two_prices_ago:
             stock.peak = stock.previous_price
-            print('PEAK SET: ' + str(stock.peak) + '\nCurrent valley: ' + str(stock.valley))
             # sell if there is a significant turn
-            if stock.shares_bought != 0 and stock.peak / stock.current_price >= 1.005:
+            print('Turn: ' + str(stock.peak / stock.current_price))
+            print('Set Peak: ' + str(stock.peak))
+            print('Valley: ' + str(stock.valley))
+            if stock.shares_owned != 0 and stock.peak / stock.current_price >= 1.001:
+                stock.shares_owned = 0
                 print('\nSell ' + str(stock.shares_owned) + ' stocks for ' + str(stock.current_price) + '\n')
                 '''
                 api.submit_order(
-                    symbol=[stock.ticker],
+                    symbol=stock.ticker,
                     qty=stock.shares_bought,
                     side='sell',
                     type='market',
@@ -109,22 +112,24 @@ def on_message(ws, message):
         # if the current price is 1% from peak, can set valley and not peak
         if (stock.peak - stock.change) > stock.current_price > stock.previous_price <= stock.two_prices_ago:
             stock.valley = stock.previous_price
-            print('VALLEY SET: ' + str(stock.valley) + '\nCurrent peak: ' + str(stock.peak))
             # buy if there is a significant turn
-            if stock.current_price / stock.valley >= 1.005:
+            print('Turn: ' + str(stock.current_price / stock.valley))
+            print('Peak: ' + str(stock.peak))
+            print('Set Valley: ' + str(stock.valley))
+            if stock.shares_owned == 0 and stock.current_price / stock.valley >= 1.002:
                 stock.shares_bought = stock.shares_bought + int(((float(account.equity)) * 0.01) / stock.current_price)
                 stock.shares_owned = stock.shares_owned + stock.shares_bought
+                stock.bought_price = stock.current_price
                 print('\nBuy ' + str(stock.shares_bought) + ' stocks for ' + str(stock.current_price) + '\n')
                 '''
                 api.submit_order(
-                    symbol=[stock.ticker],
+                    symbol=stock.ticker,
                     qty=stock.shares_bought,
                     side='buy',
                     type='market',
                     time_in_force='gtc'
                 )
                 '''
-                stock.bought_price = stock.current_price
 
 
 def on_close(ws):
