@@ -1,0 +1,263 @@
+import alpaca_trade_api as tradeapi
+import websocket
+import json
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+import yfinance as yf
+import numpy as np
+
+class Stock:
+    def __init__(self, ticker, opening_price=0.0, current_price=0.0, previous_price=0.0, time=0.0, can_set_peak=True,
+                 can_set_valley=True, shares_bought=0.0, bought_price=0.0):
+        self.ticker = ticker
+        self.opening_price = opening_price
+        self.current_price = current_price
+        self.previous_price = previous_price
+        self.time = time
+        self.can_set_peak = can_set_peak
+        self.can_set_valley = can_set_valley
+        self.shares_bought = shares_bought
+        self.bought_price = bought_price
+        self.peak1 = 0.0
+        self.peak2 = 0.0
+        self.peakTime1 = 0.0
+        self.peakTime2 = 0.0
+        self.valley1 = 0.0
+        self.valley2 = 0.0
+        self.valleyTime1 = 0.0
+        self.valleyTime2 = 0.0
+        self.resistanceSlope = 0.0
+        self.supportSlope = 0.0
+        self.change_sl = 0.0
+        self.ATR = 0.0
+        self.stoploss = 0.0
+        self.state = 0
+
+
+
+
+# account keys
+key = 'PKYXTY8FTSXVTBG18RHK'
+sec = 'EDFsyfCi4Y2onVeTDiE23sURuHngxE6VtL43rX5p'
+
+# API endpoint URL
+base_url = 'https://paper-api.alpaca.markets'
+
+# ensure api version is correct
+api = tradeapi.REST(key, sec, base_url, api_version='v2')
+
+# init an account variable
+account = api.get_account()
+
+# Get the most volatile stock
+url = 'https://finviz.com/'
+DRIVER_PATH = r'C:\Brians Stuff\Coding\Python\chromedriver_win32\chromedriver'
+# Open browser/server connection
+options = Options()
+options.headless = True
+options.add_argument("--window-size=1920,1200")
+driver = webdriver.Chrome(options=options, executable_path=DRIVER_PATH)
+# Go to yahoo finance
+driver.get(url)
+# Get two most volatile stocks from finviz
+h1 = driver.find_element_by_xpath("""//*[@id="homepage"]/table/tbody/tr[4]/td/table/tbody/tr/td[3]/table/tbody/tr[14]/td[1]/a""")
+most_volatile_1 = h1.text
+h2 = driver.find_element_by_xpath("""//*[@id="homepage"]/table/tbody/tr[4]/td/table/tbody/tr/td[3]/table/tbody/tr[15]/td[1]/a""")
+most_volatile_2 = h2.text
+#Get two highest volume stocks from finviz (almost always volatile penny stocks)
+h3 = driver.find_element_by_xpath("""//*[@id="homepage"]/table/tbody/tr[4]/td/table/tbody/tr/td[3]/table/tbody/tr[16]/td[1]/a""")
+most_volume_1 = h3.text
+h4 = driver.find_element_by_xpath("""//*[@id="homepage"]/table/tbody/tr[4]/td/table/tbody/tr/td[3]/table/tbody/tr[17]/td[1]/a""")
+most_volume_2 = h4.text
+
+# create stocks to subscribe to
+htz = Stock(most_volume_1)
+stocks = [htz]
+
+# get opening prices and for all stocks
+for stock in stocks:
+    url = "https://finance.yahoo.com/quote/" + stock.ticker
+    driver.get(url)
+    # Get the opening price
+    h5 = driver.find_element_by_xpath("""//*[@id="quote-summary"]/div[1]/table/tbody/tr[2]/td[2]/span""")
+    stock.opening_price = float(h5.text)
+    print(stock.ticker + ' OPENING PRICE: ' + str(stock.opening_price))
+    driver.quit()
+    # Get the ATR
+    # Get historical price data
+    price_data = yf.download(stock.ticker,
+                             start='2019-01-01',
+                             end='2019-12-31',
+                             progress=False)
+    # Initialize counter and True Range Array for while loop
+    counter = 0
+    TR_Array = []
+    while (counter < 14):
+        # Get current high, current low, and previous close
+        day_high = price_data.iloc[counter, 1]
+        day_low = price_data.iloc[counter, 2]
+        prev_close = price_data.iloc[(counter + 1), 3]
+        # Calculate the True Range possibilities
+        ATR_A = day_high - day_low
+        ATR_B = abs(day_high - prev_close)
+        ATR_C = abs(day_low - prev_close)
+        counter = 1 + counter
+        TR = max(ATR_A, ATR_B, ATR_C)
+        TR_Array.append(TR)
+    # Calculate average true range
+    TR_Array = np.array(TR_Array)
+    stock.ATR = np.mean(TR_Array)
+    print(stock.ATR)
+    stock.change_sl = float((stock.ATR / 5.0))
+
+
+# get streams to tune into
+streams = []
+for a_stock in stocks:
+    streams.append('T.' + a_stock.ticker)
+
+
+def get_stock(message, stocks=stocks):
+    if '\"x\"' in message:
+        data_index = message.index('\"data\"') - 2
+        stream_index = message.index('.') + 1
+        tick = message[stream_index:data_index]
+        for thing in stocks:
+            if thing.ticker == tick:
+                return thing
+
+
+def on_open(ws):
+    print("opened")
+    auth_data = {
+        "action": "authenticate",
+        "data": {
+            "key_id": key,
+            "secret_key": sec
+        }
+    }
+    ws.send(json.dumps(auth_data))
+    listen_message = {"action": "listen",
+                      "data": {
+                          "streams": streams
+                      }
+                      }
+    ws.send(json.dumps(listen_message))
+
+
+def on_message(ws, message):
+    print("received a message!")
+    print(message)
+
+    # Get indexes and values of all needed variables for stream T
+    price_index = message.index('\"p\"')
+    s_index = message.index('\"s\"')
+    timestamp_index = message.index('\"t\"')
+    c_index = message.index('\"c\"')
+    stock.time = (int(message[(timestamp_index + 4):(c_index - 1)])) / 1000000000
+    stock.current_price = float(message[(price_index + 4):(s_index - 1)])
+    print("Current Price: " + str(stock.current_price))
+
+    if stock.state == 0:
+        stock.valley1 = stock.current_price
+        stock.valley2 = stock.current_price
+        stock.peak1 = stock.current_price
+        stock.peak2 = stock.current_price
+        stock.state = 1
+
+    if stock.can_set_peak and stock.current_price > stock.valley2 + stock.change_sl:
+        print("PEAK 1 AND 2 RESET!")
+        stock.peakTime1 = stock.peakTime2
+        stock.peakTime2 = stock.time
+        stock.peak1 = stock.peak2
+        stock.peak2 = stock.current_price
+        stock.can_set_peak = False
+        stock.can_set_valley = True
+        stock.state = stock.state + 1
+
+    if stock.can_set_valley and stock.current_price > stock.peak2:
+        print("PEAK 2 RESET!")
+        stock.peak2 = stock.current_price
+        stock.can_set_peak = False
+        stock.can_set_valley = True
+
+    if stock.current_price < stock.peak2 - stock.change_sl and stock.can_set_valley:
+        print("VALLEY 1 AND 2 RESET!")
+        stock.valleyTime1 = stock.valleyTime2
+        stock.valleyTime2 = stock.time
+        stock.valley1 = stock.valley2
+        stock.valley2 = stock.current_price
+        stock.can_set_valley = False
+        stock.can_set_peak = True
+        stock.state = stock.state + 1
+
+    if stock.can_set_peak and stock.current_price < stock.valley2:
+        print("VALLEY 2 RESET!")
+        stock.valley2 = stock.current_price
+        stock.can_set_valley = False
+        stock.can_set_peak = True
+
+    print(stock.valley1)
+    print(stock.valley2)
+    print(stock.peak1)
+    print(stock.peak2)
+
+    slopeMaker()
+
+    if stock.state == 5:
+        support = stock.valley2 + stock.supportSlope * (stock.time - stock.valleyTime2)
+        resistance = stock.peak2 + stock.resistanceSlope * (stock.time - stock.peakTime2)
+        if stock.current_price <= support and stock.shares_bought == 0:
+            stock.shares_bought = int(float(account.equity)*0.01/stock.current_price)
+            print("bought shares")
+            api.submit_order(
+                symbol=stock.ticker,
+                qty=stock.shares_bought,
+                side='buy',
+                type='market',
+                time_in_force='gtc'
+            )
+            stock.stoploss = stock.current_price - (stock.change_sl)
+        if stock.current_price >= resistance and stock.shares_bought>0:
+            print("sold shares")
+            api.submit_order(
+                symbol=stock.ticker,
+                qty=stock.shares_bought,
+                side='sell',
+                type='market',
+                time_in_force='gtc'
+            )
+            stock.shares_bought = 0
+        if stock.current_price <= stock.stoploss and stock.shares_bought > 0:
+            print("sold shares on stop loss")
+            api.submit_order(
+                symbol=stock.ticker,
+                qty=stock.shares_bought,
+                side='sell',
+                type='market',
+                time_in_force='gtc'
+            )
+            stock.shares_bought = 0
+
+
+def slopeMaker():
+    if stock.peak1 != 0 and stock.peak2 != 0:
+        rise1 = stock.peak2 - stock.peak1
+        run1 = stock.peakTime2 - stock.peakTime1
+        stock.resistanceSlope = rise1 / run1
+
+    if stock.valley1 != 0 and stock.valley2 != 0:
+        rise2 = stock.valley2 - stock.valley1
+        run2 = stock.valleyTime2 - stock.valleyTime1
+        stock.supportSlope = rise2 / run2
+
+
+def on_close(ws):
+    print("closed connection")
+
+
+socket = "wss://data.alpaca.markets/stream"
+ws = websocket.WebSocketApp(socket, on_open=on_open, on_message=on_message, on_close=on_close)
+
+ws.run_forever()
