@@ -1,6 +1,7 @@
 import time
 import yfinance as yf
 import numpy as np
+import datetime as dt
 
 def slopeMaker():
     if stock.peak1 != 0 and stock.peak2 != 0:
@@ -48,38 +49,39 @@ class Stock:
         self.p123 = 0
         self.v123 = 0
 
-stock = Stock("MYOS")
-
-#Get minutely price data
-data = yf.download(tickers=stock.ticker, period="7d", interval="1m")
-prices = np.array(data.iloc[:,4])
+stock = Stock("NIO")
 
 # Get the ATR
 # Get historical price data
 price_data = yf.download(stock.ticker,
-                            start='2020-06-15',
-                            end='2020-07-05',
-                            progress=False)
-# Initialize counter and True Range Array for while loop
+                      start= dt.date.today()-dt.timedelta(days=20),
+                      end= dt.date.today(),
+                      progress=False)
+#Initialize counter and True Range Array for while loop
+
 counter = 1
 TR_Array = []
-while (counter < 14):
-        # Get current high, current low, and previous close
-        day_high = price_data.iloc[counter, 1]
-        day_low = price_data.iloc[counter, 2]
-        prev_close = price_data.iloc[(counter - 1), 3]
-        # Calculate the True Range possibilities
-        ATR_A = day_high - day_low
-        ATR_B = abs(day_high - prev_close)
-        ATR_C = abs(day_low - prev_close)
-        counter = 1 + counter
-        TR = max(ATR_A, ATR_B, ATR_C)
-        TR_Array.append(TR)
-# Calculate average true range
+while(counter < price_data.shape[0]):
+    #Get current high, current low, and previous close
+    day_high = price_data.iloc[counter, 1]
+    day_low = price_data.iloc[counter, 2]
+    prev_close = price_data.iloc[(counter-1),3]
+    #Calculate the True Range possibilities
+    ATR_A = day_high-day_low
+    ATR_B = abs(day_high-prev_close)
+    ATR_C = abs(day_low-prev_close)
+    counter = counter + 1
+    TR = max(ATR_A, ATR_B, ATR_C)
+    TR_Array.append(TR)
+#Calculate average true range
 TR_Array = np.array(TR_Array)
 stock.ATR = np.mean(TR_Array)
 
 max_profit = 0
+
+#Get minutely price data
+data = yf.download(tickers=stock.ticker, period="7d", interval="1m")
+prices = np.array(data.iloc[:,4])
 
 #Get a vector with different proportions for the stoploss and change for setting peaks and valleys
 vec = np.arange(1,10.5, 0.5).tolist()
@@ -187,5 +189,5 @@ for values_1 in vec:
             max_values_2 = values_2
 
 print("The max profit was $" + str(max_profit))
-print("The sloploss value was " + str(max_values_1) + " at " + str(max_change_sl))
+print("The stoploss value was " + str(max_values_1) + " at " + str(max_change_sl))
 print("The peak/valley change value was: " + str(max_values_2) + " at " + str(max_change))
