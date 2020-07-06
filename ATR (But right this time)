@@ -1,0 +1,29 @@
+import yfinance as yf
+import numpy as np
+import datetime as dt
+
+ticker = "AAPL"
+#Get historical price data
+price_data = yf.download(ticker,
+                      start= dt.date.today()-dt.timedelta(days=20),
+                      end= dt.date.today(),
+                      progress=False)
+#Initialize counter and True Range Array for while loop
+
+counter = 1
+TR_Array = []
+while(counter < price_data.shape[0]):
+    #Get current high, current low, and previous close
+    day_high = price_data.iloc[counter, 1]
+    day_low = price_data.iloc[counter, 2]
+    prev_close = price_data.iloc[(counter-1),3]
+    #Calculate the True Range possibilities
+    ATR_A = day_high-day_low
+    ATR_B = abs(day_high-prev_close)
+    ATR_C = abs(day_low-prev_close)
+    counter = counter + 1
+    TR = max(ATR_A, ATR_B, ATR_C)
+    TR_Array.append(TR)
+#Calculate average true range
+TR_Array = np.array(TR_Array)
+ATR = np.mean(TR_Array)
