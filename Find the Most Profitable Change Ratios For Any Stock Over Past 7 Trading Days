@@ -122,6 +122,8 @@ for values_1 in vec:
                 stock.p123 = 1
                 if stock.state < 7:
                     stock.state = stock.state + 1
+                if stock.state == 7:
+                    slopeMaker()
             if stock.can_set_valley and stock.current_price > stock.peak3 and stock.p123 == 1:
                 # print("PEAK 3 RESET!")
                 stock.peak3 = stock.current_price
