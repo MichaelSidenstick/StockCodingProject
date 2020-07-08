@@ -26,4 +26,4 @@ while(counter < price_data.shape[0]):
     TR_Array.append(TR)
 #Calculate average true range
 TR_Array = np.array(TR_Array)
-stock.ATR = np.mean(TR_Array)
+ATR = np.mean(TR_Array)
